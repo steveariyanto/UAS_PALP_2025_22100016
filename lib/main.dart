@@ -1,166 +1,241 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'history_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-void main() => runApp(NyuciHelmApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  runApp(const MyApp());
+}
 
-class NyuciHelmApp extends StatelessWidget {
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Nyuci Helm Express',
-      theme: ThemeData(
-        primarySwatch: Colors.orange,
-      ),
-      home: HelmServiceList(),
-      debugShowCheckedModeBanner: false,
+      title: 'Layanan Cuci Helm',
+      home: const MainPage(),
+      routes: {
+        '/history': (context) => HistoryPage(),
+      },
     );
   }
 }
 
-class HelmServiceList extends StatelessWidget {
-  final List<Map<String, dynamic>> helmShops = [
-    {
-      'nama': 'Standar',
-      'keterangan': 'cuci manual dan pengeringan manual (2 x 24 jam)',
-      'harga': '20.000'
-    },
-    {
-      'nama': 'Advanced',
-      'keterangan': 'cuci manual dan pengeringan mesin (1 x 24 jam)',
-      'harga': '30.000'
-    },
-    {
-      'nama': 'Pro',
-      'keterangan': 'cuci dan pengeringan mesin (30 menit kelarr)',
-      'harga': '50.000'
-    },
-  ];
+class MainPage extends StatelessWidget {
+  const MainPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Layanan Cuci Helm')),
-      body: ListView.builder(
-        itemCount: helmShops.length,
-        itemBuilder: (context, index) {
-          final shop = helmShops[index];
-          return Card(
-            margin: EdgeInsets.all(10),
-            child: ListTile(
-              title: Text(shop['nama']),
-              subtitle:
-                  Text('Jenis: ${shop['keterangan']} \nRp ${shop['harga']}'),
-              trailing: ElevatedButton(
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => PemesananForm(shopName: shop['nama']),
-                  );
-                },
-                child: Text('Pesan'),
-              ),
+      appBar: AppBar(
+        title: const Text('Layanan Cuci Helm'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Lihat History',
+            onPressed: () {
+              Navigator.pushNamed(context, '/history');
+            },
+          ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            ServiceCard(
+              title: 'Standar',
+              description: 'Layanan cuci helm standar.',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => OrderForm(serviceType: 'Standar'),
+                  ),
+                );
+              },
             ),
-          );
-        },
+            ServiceCard(
+              title: 'Advanced',
+              description: 'Layanan cuci helm dengan fitur tambahan.',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => OrderForm(serviceType: 'Advanced'),
+                  ),
+                );
+              },
+            ),
+            ServiceCard(
+              title: 'Pro',
+              description: 'Layanan cuci helm paling lengkap dan detail.',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => OrderForm(serviceType: 'Pro'),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class PemesananForm extends StatefulWidget {
-  final String shopName;
+class ServiceCard extends StatelessWidget {
+  final String title;
+  final String description;
+  final VoidCallback onPressed;
 
-  PemesananForm({required this.shopName});
-
-  @override
-  _PemesananFormState createState() => _PemesananFormState();
-}
-
-class _PemesananFormState extends State<PemesananForm> {
-  final _formKey = GlobalKey<FormState>();
-  int jumlahHelm = 1;
-  DateTime? tanggalAmbil;
-  String nama = '';
-  String kontak = '';
-  String tipePembayaran = 'Tunai';
+  const ServiceCard({
+    required this.title,
+    required this.description,
+    required this.onPressed,
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Pesan - ${widget.shopName}'),
-      content: SingleChildScrollView(
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: ListTile(
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(description),
+        trailing: ElevatedButton(
+          onPressed: onPressed,
+          child: const Text('Pesan'),
+        ),
+      ),
+    );
+  }
+}
+
+class OrderForm extends StatefulWidget {
+  final String serviceType;
+  const OrderForm({required this.serviceType, super.key});
+
+  @override
+  State<OrderForm> createState() => _OrderFormState();
+}
+
+class _OrderFormState extends State<OrderForm> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _jumlahHelmController = TextEditingController();
+  final TextEditingController _namaController = TextEditingController();
+  final TextEditingController _noHpController = TextEditingController();
+  DateTime? _tanggalAmbil;
+  String? _tipePembayaran;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Form Pemesanan (${widget.serviceType})')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
-          child: Column(
+          child: ListView(
             children: [
               TextFormField(
-                decoration: InputDecoration(labelText: 'Jumlah Helm'),
+                controller: _jumlahHelmController,
+                decoration: const InputDecoration(labelText: 'Jumlah Helm'),
                 keyboardType: TextInputType.number,
-                onSaved: (value) =>
-                    jumlahHelm = int.tryParse(value ?? '1') ?? 1,
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Wajib diisi' : null,
               ),
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () async {
+              const SizedBox(height: 8),
+              ListTile(
+                title: Text(_tanggalAmbil == null
+                    ? 'Pilih Tanggal Ambil'
+                    : 'Tanggal Ambil: ${_tanggalAmbil!.toLocal()}'.split(' ')[0]),
+                trailing: const Icon(Icons.calendar_today),
+                onTap: () async {
                   final picked = await showDatePicker(
                     context: context,
-                    initialDate: DateTime.now().add(Duration(days: 1)),
+                    initialDate: DateTime.now(),
                     firstDate: DateTime.now(),
-                    lastDate: DateTime.now().add(Duration(days: 30)),
+                    lastDate: DateTime(2100),
                   );
                   if (picked != null) {
-                    setState(() => tanggalAmbil = picked);
+                    setState(() {
+                      _tanggalAmbil = picked;
+                    });
                   }
                 },
-                child: Text(
-                  tanggalAmbil == null
-                      ? 'Pilih Tanggal Ambil'
-                      : 'Ambil: ${DateFormat('yyyy-MM-dd').format(tanggalAmbil!)}',
-                ),
               ),
+              const SizedBox(height: 8),
               TextFormField(
-                decoration: InputDecoration(labelText: 'Nama'),
-                onSaved: (value) => nama = value ?? '',
+                controller: _namaController,
+                decoration: const InputDecoration(labelText: 'Nama'),
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Wajib diisi' : null,
               ),
+              const SizedBox(height: 8),
               TextFormField(
-                decoration: InputDecoration(labelText: 'No Hp'),
-                onSaved: (value) => kontak = value ?? '',
+                controller: _noHpController,
+                decoration: const InputDecoration(labelText: 'No HP'),
+                keyboardType: TextInputType.phone,
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Wajib diisi' : null,
               ),
+              const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: tipePembayaran,
-                items: ['Tunai', 'Transfer', 'QRIS']
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (val) => setState(() => tipePembayaran = val!),
-                decoration: InputDecoration(labelText: 'Tipe Pembayaran'),
+                value: _tipePembayaran,
+                decoration: const InputDecoration(labelText: 'Tipe Pembayaran'),
+                items: const [
+                  DropdownMenuItem(value: 'Tunai', child: Text('Tunai')),
+                  DropdownMenuItem(value: 'Transfer', child: Text('Transfer')),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    _tipePembayaran = value;
+                  });
+                },
+                validator: (value) =>
+                    value == null ? 'Pilih tipe pembayaran' : null,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () async {
+                  if (_formKey.currentState!.validate() &&
+                      _tanggalAmbil != null) {
+                    await FirebaseFirestore.instance.collection('orders').add({
+                      'serviceType': widget.serviceType,
+                      'jumlahHelm': int.parse(_jumlahHelmController.text),
+                      'tanggalAmbil': Timestamp.fromDate(_tanggalAmbil!),
+                      'nama': _namaController.text,
+                      'noHp': _noHpController.text,
+                      'tipePembayaran': _tipePembayaran,
+                      'createdAt': FieldValue.serverTimestamp(),
+                    });
+                    if (mounted) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (context) => HistoryPage()),
+                        (route) => route.isFirst,
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Pemesanan berhasil!')),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Simpan'),
               ),
             ],
           ),
         ),
       ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context), child: Text('Batal')),
-        ElevatedButton(
-            onPressed: () {
-              if (_formKey.currentState!.validate() && tanggalAmbil != null) {
-                _formKey.currentState!.save();
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(
-                      'Pesanan ke ${widget.shopName} disimpan!\nJumlah Helm: $jumlahHelm\nTgl Ambil: ${tanggalAmbil!.toLocal()}'
-                          .split(' ')[0]),
-                ));
-              }
-            },
-            child: Text('Kirim')),
-      ],
     );
   }
 }
